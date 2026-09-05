@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"sort"
+	"strings"
 
 	"github.com/gobuffalo/pop/v6"
 	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" driver used by lockMigrations
@@ -63,8 +64,29 @@ func Up(ctx context.Context, cfg *config.Config, conn *pop.Connection) error {
 	return m.Up()
 }
 
-// Down rolls back the given number of migrations. It takes the same lock as Up.
+// Down rolls back the given number of migrations, newest first. It takes the
+// same lock as Up, and refuses to run while any migration is pending.
+//
+// That refusal is not caution, it is correctness. Pop decides which migrations
+// have run by counting rows in schema_migration and then assuming the unapplied
+// ones are the newest by version — it slices the sorted list rather than
+// comparing versions to what is recorded. A pending migration whose version
+// sorts before an applied one shifts that slice, and pop rolls back the wrong
+// migration, reporting success. Requiring a fully applied schema is the one
+// state in which its arithmetic is guaranteed to hold.
 func Down(ctx context.Context, cfg *config.Config, conn *pop.Connection, steps int) error {
+	pending, err := Pending(ctx, conn)
+	if err != nil {
+		return err
+	}
+	if len(pending) > 0 {
+		return fmt.Errorf(
+			"refusing to roll back while %d migration(s) are pending: %s\n"+
+				"  pop identifies migrations to reverse by position, not by version,\n"+
+				"  so rolling back now can reverse the wrong one. Apply or remove them first.",
+			len(pending), strings.Join(pending, ", "))
+	}
+
 	unlock, err := lockMigrations(ctx, cfg)
 	if err != nil {
 		return err

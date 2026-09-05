@@ -24,6 +24,13 @@ for `net.Listen` and for the ping itself. Deploying is `migrate up && serve`.
   table to an `io.Writer`. `Migrator.UpMigrations.Migrations` and
   `MigrationTableName()` are exported, so the count is computed directly rather
   than by parsing `Status` output.
+- `migrate down` refuses to run while any migration is pending. Pop decides
+  which migrations to reverse by counting rows in `schema_migration` and
+  slicing the version-sorted list, rather than comparing versions against what
+  is recorded — so a pending migration sorting before an applied one makes it
+  reverse the wrong migration and report success. A fully applied schema is the
+  only state where that arithmetic holds. This is also why migration timestamps
+  must be UTC: a file stamped ahead of the clock puts the next one behind it.
 - `Migrator.exec` takes no lock, so two concurrent `migrate up` runs race in the
   middle of DDL. `migrate up` wraps `Up()` in a Postgres advisory lock to close
   this; it is our code because pop has nowhere to put it.
