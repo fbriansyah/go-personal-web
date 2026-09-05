@@ -1,0 +1,17 @@
+# Copy to ./config.yaml or $HOME/.personal-web/config.yaml.
+#
+# Every key below is optional; the values shown are the defaults. Any key the
+# application does not know is a startup error, so a typo fails loudly.
+#
+# Precedence: flag > environment variable > this file > default.
+# Environment variables use the PW_ prefix: PW_SERVER_PORT, PW_LOG_LEVEL.
+#
+# Run `personal-web config show` to see the merged result.
+
+server:
+  port: 8080
+  read_timeout: 5s
+  write_timeout: 10s
+  shutdown_timeout: 10s
+
+log_level: info # debug | info | warn | error
