@@ -13,6 +13,7 @@ import (
 type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
+	Admin    AdminConfig    `mapstructure:"admin"`
 	LogLevel string         `mapstructure:"log_level"`
 }
 
@@ -32,6 +33,61 @@ type DatabaseConfig struct {
 	Pool            int           `mapstructure:"pool"`
 	IdlePool        int           `mapstructure:"idle_pool"`
 	ConnMaxLifetime time.Duration `mapstructure:"conn_max_lifetime"`
+}
+
+// AdminConfig holds everything the Admin surface needs that is not content.
+//
+// The Author is a config value rather than a database row (ADR-0009), so their
+// credential lives here, and so does the key their session is signed with.
+type AdminConfig struct {
+	// PasswordHash is an argon2id encoded hash ($argon2id$v=19$m=...$salt$hash).
+	// The parameters are read from the hash itself at verification, never from
+	// here: a hash carries the parameters it was made with, and verifying
+	// against different ones fails for every password including the right one.
+	PasswordHash Secret `mapstructure:"password_hash"`
+	// SessionSecret keys the HMAC of the session cookie. Rotating it
+	// invalidates every outstanding session, which is the intended way to log
+	// every device out.
+	SessionSecret Secret `mapstructure:"session_secret"`
+	// SessionTTL is how long a session lasts from the moment it is issued.
+	// There is no renewal: without session storage there is nothing to revoke
+	// against, so a sliding window would be extended by a stolen cookie's own
+	// use and never close (ADR-0015).
+	SessionTTL time.Duration `mapstructure:"session_ttl"`
+	// InsecureCookie drops the Secure attribute so that Admin can be used over
+	// plain HTTP in development. It is an explicit key rather than a guess at
+	// whether the host looks like localhost, because that guess is how a
+	// production deployment quietly stops setting Secure.
+	InsecureCookie bool `mapstructure:"insecure_cookie"`
+	// Timezone is the zone a Publication Date typed into the edit form is
+	// understood in, and the zone every date is displayed in. It is stated
+	// rather than taken from the server, so moving a deployment cannot shift a
+	// schedule.
+	Timezone string `mapstructure:"timezone"`
+	// LoginAttempts is how many login attempts one address may make within
+	// LoginWindow before being refused. The limit stands in front of argon2id,
+	// which is expensive by design and therefore something an unauthenticated
+	// caller must not be able to spend freely (ADR-0015).
+	LoginAttempts int `mapstructure:"login_attempts"`
+	// LoginWindow is the period LoginAttempts is counted over.
+	LoginWindow time.Duration `mapstructure:"login_window"`
+}
+
+// Enabled reports whether Admin has been given the two secrets it cannot run
+// without. When it has not, `serve` mounts the public site alone and says so;
+// a personal machine that has never set them still gets a working `make run`.
+func (a AdminConfig) Enabled() bool {
+	return a.PasswordHash.Set() && a.SessionSecret.Set()
+}
+
+// Location resolves Timezone. Validate has already accepted it, so an unknown
+// name here falls back to UTC rather than failing.
+func (a AdminConfig) Location() *time.Location {
+	loc, err := time.LoadLocation(a.Timezone)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
 }
 
 var logLevels = map[string]slog.Level{
@@ -81,8 +137,36 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("database.conn_max_lifetime must be greater than zero, got %s",
 			c.Database.ConnMaxLifetime)
 	}
+	if err := c.Admin.validate(); err != nil {
+		return err
+	}
 	if _, ok := logLevels[c.LogLevel]; !ok {
 		return fmt.Errorf("log_level must be one of debug, info, warn, error, got %q", c.LogLevel)
+	}
+	return nil
+}
+
+// validate checks the Admin settings that are always meaningful. The two
+// secrets are not among them: absent, Admin is simply not mounted, and
+// demanding them would make a fresh clone fail to serve the public site.
+func (a AdminConfig) validate() error {
+	if a.SessionTTL <= 0 {
+		return fmt.Errorf("admin.session_ttl must be greater than zero, got %s", a.SessionTTL)
+	}
+	if _, err := time.LoadLocation(a.Timezone); err != nil {
+		return fmt.Errorf("admin.timezone is not a known zone: %q", a.Timezone)
+	}
+	if a.LoginAttempts < 1 {
+		return fmt.Errorf("admin.login_attempts must be at least 1, got %d", a.LoginAttempts)
+	}
+	if a.LoginWindow <= 0 {
+		return fmt.Errorf("admin.login_window must be greater than zero, got %s", a.LoginWindow)
+	}
+	// A password hash without a signing key (or the reverse) is a deployment
+	// that believes Admin is protected when it is simply absent. Saying so is
+	// the whole reason config rejects what it cannot honour.
+	if a.PasswordHash.Set() != a.SessionSecret.Set() {
+		return fmt.Errorf("admin.password_hash and admin.session_secret must be set together")
 	}
 	return nil
 }
@@ -106,6 +190,17 @@ func (c Config) MarshalYAML() (any, error) {
 			"pool":              c.Database.Pool,
 			"idle_pool":         c.Database.IdlePool,
 			"conn_max_lifetime": c.Database.ConnMaxLifetime.String(),
+		},
+		// Both admin secrets render through Secret.MarshalYAML, so neither
+		// reaches stdout however this map is printed.
+		"admin": map[string]any{
+			"password_hash":   c.Admin.PasswordHash,
+			"session_secret":  c.Admin.SessionSecret,
+			"session_ttl":     c.Admin.SessionTTL.String(),
+			"insecure_cookie": c.Admin.InsecureCookie,
+			"timezone":        c.Admin.Timezone,
+			"login_attempts":  c.Admin.LoginAttempts,
+			"login_window":    c.Admin.LoginWindow.String(),
 		},
 	}, nil
 }

@@ -7,17 +7,12 @@
 package content
 
 import (
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/gobuffalo/pop/v6"
 	"github.com/gofrs/uuid"
 )
-
-// ErrNotFound is returned when no Post or Page matches, including when one
-// exists but is not visible to the Audience that asked.
-var ErrNotFound = errors.New("content: not found")
 
 // Audience decides whether unpublished writing is visible.
 //
