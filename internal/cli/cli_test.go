@@ -19,6 +19,11 @@ type shown struct {
 		Port        int    `yaml:"port"`
 		ReadTimeout string `yaml:"read_timeout"`
 	} `yaml:"server"`
+	Database struct {
+		URL             string `yaml:"url"`
+		Pool            int    `yaml:"pool"`
+		ConnMaxLifetime string `yaml:"conn_max_lifetime"`
+	} `yaml:"database"`
 }
 
 // run builds a fresh command tree, executes it, and returns its stdout.
@@ -246,5 +251,66 @@ func TestUnknownFlagShowsUsage(t *testing.T) {
 	}
 	if !strings.Contains(out, "Usage:") {
 		t.Errorf("a parse error should still print usage:\n%s", out)
+	}
+}
+
+// `config show` is an Ops Command, so it has to stay safe to run against a live
+// system even now that the Effective Config carries a database password.
+func TestConfigShowRedactsTheDatabasePassword(t *testing.T) {
+	isolate(t)
+	t.Setenv("PW_DATABASE_URL", "postgres://writer:hunter2@db.example.com:5432/pw?sslmode=require")
+
+	out, err := run(t, "config", "show")
+	if err != nil {
+		t.Fatalf("config show: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "hunter2") {
+		t.Fatalf("config show printed the password:\n%s", out)
+	}
+
+	var got shown
+	if err := yaml.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("parsing output: %v\n%s", err, out)
+	}
+	const want = "postgres://writer:xxxxx@db.example.com:5432/pw?sslmode=require"
+	if got.Database.URL != want {
+		t.Errorf("database.url = %q, want %q", got.Database.URL, want)
+	}
+	// The rest of the DSN survives, because host and database name are what
+	// makes the command worth running when a deployment points somewhere odd.
+	if got.Database.Pool != 5 {
+		t.Errorf("database.pool = %d, want 5", got.Database.Pool)
+	}
+}
+
+// The database obeys the same Config Source ranking as everything else, which
+// is the whole reason it is not configured by database.yml.
+func TestDatabaseURLFollowsPrecedence(t *testing.T) {
+	isolate(t)
+	path := writeConfig(t, "database:\n  url: postgres://file@filehost:5432/pw\n")
+
+	got := showConfig(t, "--config", path)
+	if !strings.Contains(got.Database.URL, "filehost") {
+		t.Fatalf("config file did not win over the default: %q", got.Database.URL)
+	}
+
+	t.Setenv("PW_DATABASE_URL", "postgres://env@envhost:5432/pw")
+	got = showConfig(t, "--config", path)
+	if !strings.Contains(got.Database.URL, "envhost") {
+		t.Errorf("environment did not win over the config file: %q", got.Database.URL)
+	}
+}
+
+// An unusable DSN must fail while resolving config, not later at connect time.
+func TestRejectsBadDatabaseURL(t *testing.T) {
+	isolate(t)
+	t.Setenv("PW_DATABASE_URL", "mysql://u:p@host:3306/db")
+
+	out, err := run(t, "config", "show")
+	if err == nil {
+		t.Fatalf("expected an error, got:\n%s", out)
+	}
+	if strings.Contains(err.Error(), "p@host") {
+		t.Errorf("the error leaked the DSN: %v", err)
 	}
 }

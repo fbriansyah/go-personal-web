@@ -45,6 +45,7 @@ func NewRootCmd(bi BuildInfo) *cobra.Command {
 	root.AddCommand(
 		newServeCmd(a),
 		newConfigCmd(a),
+		newMigrateCmd(a),
 		newVersionCmd(bi),
 	)
 	return root
