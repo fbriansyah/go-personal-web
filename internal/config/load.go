@@ -19,6 +19,13 @@ const EnvPrefix = "PW"
 // dirName is the directory under $HOME searched for a Config File.
 const dirName = ".personal-web"
 
+// DevDatabaseURL is the connection string a developer gets without configuring
+// anything. It is duplicated as the fallback in database.yml, which is the one
+// value ADR-0005 knowingly writes twice; keep the two identical. It is not a
+// secret, and a deployment that reaches it fails loudly at the startup ping
+// rather than serving from the wrong database.
+const DevDatabaseURL = "postgres://postgres:postgres@127.0.0.1:5432/pw_dev?sslmode=disable"
+
 // New returns a viper instance with the defaults and the environment Config
 // Source in place. Callers bind their flags to it before calling Load.
 //
@@ -31,6 +38,10 @@ func New() *viper.Viper {
 	v.SetDefault("server.read_timeout", 5*time.Second)
 	v.SetDefault("server.write_timeout", 10*time.Second)
 	v.SetDefault("server.shutdown_timeout", 10*time.Second)
+	v.SetDefault("database.url", DevDatabaseURL)
+	v.SetDefault("database.pool", 5)
+	v.SetDefault("database.idle_pool", 2)
+	v.SetDefault("database.conn_max_lifetime", 30*time.Minute)
 	v.SetDefault("log_level", "info")
 
 	v.SetEnvPrefix(EnvPrefix)
