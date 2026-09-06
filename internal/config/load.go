@@ -42,6 +42,19 @@ func New() *viper.Viper {
 	v.SetDefault("database.pool", 5)
 	v.SetDefault("database.idle_pool", 2)
 	v.SetDefault("database.conn_max_lifetime", 30*time.Minute)
+	// Both secrets are declared with an empty default, and the empty value is
+	// what tells serve that Admin is not configured. Declaring them is not
+	// cosmetic: viper only reads an environment variable for a key it already
+	// knows, so a key with no default is invisible to PW_ADMIN_PASSWORD_HASH
+	// however carefully that variable is set.
+	v.SetDefault("admin.password_hash", "")
+	v.SetDefault("admin.session_secret", "")
+	// Seven days, absolute (ADR-0015).
+	v.SetDefault("admin.session_ttl", 7*24*time.Hour)
+	v.SetDefault("admin.insecure_cookie", false)
+	v.SetDefault("admin.timezone", "UTC")
+	v.SetDefault("admin.login_attempts", 10)
+	v.SetDefault("admin.login_window", 15*time.Minute)
 	v.SetDefault("log_level", "info")
 
 	v.SetEnvPrefix(EnvPrefix)

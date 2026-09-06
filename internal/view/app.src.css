@@ -1,0 +1,10 @@
+@import "tailwindcss";
+
+/* Tailwind reads source files as plain text, so it finds only class names that
+   appear whole. A class assembled in Go — "text-" + colour + "-600" — compiles,
+   renders, and is never generated (ADR-0013). Every class in this package is
+   written out in full for that reason. */
+@source "./";
+
+/* The Admin surface is never indexed and never seen by anyone but the Author,
+   so it commits to one look rather than answering the viewer's theme. */

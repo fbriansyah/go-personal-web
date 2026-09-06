@@ -11,7 +11,9 @@ import (
 
 	"github.com/gobuffalo/pop/v6"
 
+	"github.com/fbriansyah/go-personal-web/internal/admin"
 	"github.com/fbriansyah/go-personal-web/internal/config"
+	"github.com/fbriansyah/go-personal-web/internal/content"
 	"github.com/fbriansyah/go-personal-web/internal/database"
 )
 
@@ -19,7 +21,7 @@ import (
 // configured shutdown timeout. It returns only once the server has stopped.
 func Run(ctx context.Context, cfg *config.Config, conn *pop.Connection, log *slog.Logger) error {
 	srv := &http.Server{
-		Handler:      routes(conn),
+		Handler:      routes(cfg, conn, log),
 		ReadTimeout:  cfg.Server.ReadTimeout,
 		WriteTimeout: cfg.Server.WriteTimeout,
 	}
@@ -53,8 +55,18 @@ func Run(ctx context.Context, cfg *config.Config, conn *pop.Connection, log *slo
 	}
 }
 
-func routes(conn *pop.Connection) http.Handler {
+func routes(cfg *config.Config, conn *pop.Connection, log *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
+
+	// Admin is mounted only when it has both of the secrets ADR-0009 keeps in
+	// config. Without them there is nothing to authenticate against, and
+	// mounting an unprotected /admin would be worse than not having one. A
+	// fresh clone therefore serves the public site and says why.
+	if cfg.Admin.Enabled() {
+		mux.Handle("/admin/", admin.New(content.NewStore(conn), cfg, log))
+	} else {
+		log.Warn("admin is not mounted: set admin.password_hash and admin.session_secret to enable it")
+	}
 
 	// healthz answers for the process alone. Failing it when the database is
 	// down would have an orchestrator restart a perfectly healthy binary over

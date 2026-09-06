@@ -56,6 +56,7 @@ it applies to log lines and error messages as well.
 | Command | Purpose |
 | --- | --- |
 | `serve` | Run the HTTP server |
+| `admin hash-password` | Print an argon2id hash for the Author's password |
 | `migrate up` | Apply every pending migration |
 | `migrate down --step N` | Roll back N migrations, newest first |
 | `migrate status` | Show which migrations have been applied |
@@ -64,6 +65,64 @@ it applies to log lines and error messages as well.
 
 `/healthz` answers for the process alone, so a Postgres restart does not get a
 healthy binary killed. `/readyz` answers for the process *and* its database.
+
+## Admin
+
+`/admin` is where the Author writes. It is mounted only when both secrets are
+set; without them the binary serves the public site and says so at startup.
+
+```sh
+export PW_ADMIN_PASSWORD_HASH="$(make -s hash-password)"
+export PW_ADMIN_SESSION_SECRET="$(make -s session-secret)"
+export PW_ADMIN_INSECURE_COOKIE=true   # development only: allows plain HTTP
+make run
+```
+
+There is no `users` table and no registration: the Author is a config value
+(ADR-0009). Rotating the password is an environment change and a restart;
+rotating `PW_ADMIN_SESSION_SECRET` logs every device out immediately.
+
+A session lasts seven days from the moment it is issued and is never renewed,
+because with nothing stored there is nothing to revoke against. The cookie is
+`SameSite=Strict`, which is the whole of the CSRF defence, and `Secure` unless
+`admin.insecure_cookie` says otherwise — a key you set, never a guess about
+localhost.
+
+Admin works with scripting off: every action is a real form or a real link.
+htmx makes two of them better — search filters as you type, and a Draft saves
+itself every fifteen seconds. Published writing does **not** autosave: deleting
+a paragraph in order to rewrite it would otherwise put the gap in front of
+whoever is reading (ADR-0014).
+
+There is no publish button and no status column. The Publication Date is a
+field: empty is a Draft, a past time is live, a future one is scheduled, and
+"Publish now" simply fills it in. Times are read and shown in
+`admin.timezone`, printed beside the field so it is never a guess.
+
+## The front end
+
+Components are [templ](https://templ.guide); the behaviour is
+[htmx](https://htmx.org). Both htmx and the stylesheet are files in this
+repository, embedded in the binary and served from `/admin/static` — no CDN, so
+a strict Content-Security-Policy costs nothing and nobody else's JavaScript
+runs on the page holding the session cookie.
+
+The generated files — `internal/view/*_templ.go` and
+`internal/admin/static/app.css` — are committed, so `git clone && go build`
+works with no tools at all. `templ` and Tailwind are needed only to *change*
+them, and the Makefile fetches both, pinned, into `bin/`:
+
+```sh
+make generate   # after editing a .templ file or a class name
+make watch      # regenerate and reload while editing
+```
+
+`make check` fails if the committed generated files are stale. They fail
+silently otherwise: a stale template renders old markup with no error, and a
+stale stylesheet drops styles for classes plainly written in the template.
+
+Tailwind reads the sources as plain text, so every class name must appear
+whole. `"text-" + colour + "-600"` compiles, renders, and is never generated.
 
 ## Migrations
 
@@ -118,9 +177,10 @@ internal/content/    Posts, Pages, and the store they are read from
 internal/server/     the HTTP server
 ```
 
-Two containment rules hold the shape: viper does not leave `internal/config`,
-and pop does not leave `internal/database` and `internal/content`. Everything
-else receives ordinary Go types.
+Three containment rules hold the shape: viper does not leave `internal/config`,
+pop does not leave `internal/database` and `internal/content`, and
+`internal/view` reaches neither the store nor the request. Everything else
+receives ordinary Go types.
 
 ## Decisions
 
@@ -131,6 +191,10 @@ pop's documented path.
 
 ## Not built yet
 
-Public pages and the admin UI, along with the authentication described in
-ADR-0009, land on a separate branch. What is here is the data layer and the
-commands around it.
+The public site. Posts and Pages can be written, but nothing serves them to a
+visitor yet, and the Markdown in a body is stored rather than rendered — the
+renderer is the public site's decision (ADR-0008).
+
+Also deliberately absent: deleting writing (clearing the Publication Date
+withdraws it), a live Markdown preview, and the working revision that would let
+published writing autosave the way a Draft does (ADR-0014).

@@ -49,7 +49,9 @@ _Avoid_: static page, document, content
 
 **Slug**:
 The URL-safe name that addresses a Post or Page publicly. It is the only
-identifier a visitor ever sees.
+identifier a visitor ever sees, and it may be rewritten at any time — what a
+Post *is* does not depend on it. The Admin never addresses writing by Slug, for
+that reason: it is the one place the Slug changes.
 _Avoid_: permalink, path, url, key
 
 **Publication Date**:
@@ -60,10 +62,21 @@ _Avoid_: status, published flag, state, visibility
 
 **Draft**:
 A Post or Page with no Publication Date. Invisible to the public and visible to
-the Author, through the same URL that will serve it once published.
+the Author, through the same URL that will serve it once published. A Draft is
+saved continuously as it is written; published writing changes only when the
+Author asks for it, because someone may be reading it.
 _Avoid_: unpublished, private, hidden
 
 **Author**:
 The single person who writes the site. There is no second one, and no notion of
 registering, inviting or listing them.
-_Avoid_: user, admin, account, owner
+_Avoid_: user, account, owner, and admin — that word names the Admin surface,
+never the person who works in it.
+
+### The private surface
+
+**Admin**:
+The private half of the site, where the Author writes. It is reached through the
+same binary and the same database as the public half; it is not a separate
+application, and there is nothing in it a visitor may see.
+_Avoid_: dashboard, backend, CMS, console

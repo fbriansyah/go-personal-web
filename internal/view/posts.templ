@@ -1,0 +1,135 @@
+package view
+
+import "time"
+
+// Posts is the whole list screen.
+templ Posts(l PostListing, now time.Time) {
+	<div class="mb-6 flex items-center justify-between gap-4">
+		<h1 class="text-xl font-semibold tracking-tight">Posts</h1>
+		<a href="/admin/posts/new" class="rounded bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-stone-700">Write a post</a>
+	</div>
+	@searchForm("/admin/posts", "#post-list", l.Query)
+	@PostRegion(l, now)
+}
+
+// PostRegion is what a search replaces: the list and nothing else. The search
+// form stays put, so the box keeps focus and the text the Author is typing.
+templ PostRegion(l PostListing, now time.Time) {
+	<div id="post-list" class="divide-y divide-stone-200 rounded border border-stone-200 bg-white">
+		if len(l.Posts) == 0 {
+			@emptyRow(l.Query)
+		}
+		@PostRows(l, now)
+	</div>
+}
+
+// PostRows is the fragment "load more" appends. It ends with the button that
+// asks for the page after this one, and that button replaces itself — so the
+// rows and the next button always arrive together and cannot disagree.
+templ PostRows(l PostListing, now time.Time) {
+	for _, p := range l.Posts {
+		<a href={ templ.SafeURL("/admin/posts/" + p.ID.String() + "/edit") } class="flex items-baseline gap-3 px-4 py-3 hover:bg-stone-50">
+			<span class="min-w-0 flex-1 truncate font-medium">{ p.Title }</span>
+			@stateBadge(PostState(p, now))
+			<span class="w-44 shrink-0 text-right text-sm text-stone-500">{ PostWhen(p, l.Zone) }</span>
+		</a>
+	}
+	if l.NextPage > 0 {
+		@loadMore(listURL("/admin/posts", l.Query, l.NextPage))
+	}
+}
+
+// Pages is the list screen for Pages. A Page is not a Post without a date, so
+// it gets its own screen rather than a filter on this one.
+templ Pages(l PageListing, now time.Time) {
+	<div class="mb-6 flex items-center justify-between gap-4">
+		<h1 class="text-xl font-semibold tracking-tight">Pages</h1>
+		<a href="/admin/pages/new" class="rounded bg-stone-900 px-3 py-2 text-sm font-medium text-white hover:bg-stone-700">Write a page</a>
+	</div>
+	@searchForm("/admin/pages", "#page-list", l.Query)
+	@PageRegion(l, now)
+}
+
+templ PageRegion(l PageListing, now time.Time) {
+	<div id="page-list" class="divide-y divide-stone-200 rounded border border-stone-200 bg-white">
+		if len(l.Pages) == 0 {
+			@emptyRow(l.Query)
+		}
+		@PageRows(l, now)
+	</div>
+}
+
+templ PageRows(l PageListing, now time.Time) {
+	for _, p := range l.Pages {
+		<a href={ templ.SafeURL("/admin/pages/" + p.ID.String() + "/edit") } class="flex items-baseline gap-3 px-4 py-3 hover:bg-stone-50">
+			<span class="min-w-0 flex-1 truncate font-medium">{ p.Title }</span>
+			<span class="shrink-0 text-sm text-stone-400">/{ p.Slug }</span>
+			@stateBadge(PageState(p, now))
+			<span class="w-44 shrink-0 text-right text-sm text-stone-500">{ PageWhen(p, l.Zone) }</span>
+		</a>
+	}
+	if l.NextPage > 0 {
+		@loadMore(listURL("/admin/pages", l.Query, l.NextPage))
+	}
+}
+
+// searchForm is a real GET form. htmx only makes it faster: with scripting off
+// it still submits, and the results still have a URL that can be reloaded,
+// bookmarked and opened cold (ADR-0011).
+templ searchForm(action, target, query string) {
+	<form
+		method="get"
+		action={ templ.SafeURL(action) }
+		class="mb-4"
+		hx-get={ action }
+		hx-target={ target }
+		hx-swap="outerHTML"
+		hx-trigger="input changed delay:250ms, submit"
+		hx-push-url="true"
+	>
+		<input
+			type="search"
+			name="q"
+			value={ query }
+			placeholder="Search titles and slugs"
+			aria-label="Search"
+			class="w-full rounded border border-stone-300 px-3 py-2 focus:border-stone-900 focus:outline-none"
+		/>
+	</form>
+}
+
+// loadMore replaces itself with the next rows and the button after those.
+templ loadMore(href string) {
+	<button
+		type="button"
+		hx-get={ href }
+		hx-target="this"
+		hx-swap="outerHTML"
+		class="w-full px-4 py-3 text-sm font-medium text-stone-500 hover:bg-stone-50 hover:text-stone-900"
+	>
+		Load more
+	</button>
+}
+
+templ emptyRow(query string) {
+	<p class="px-4 py-6 text-sm text-stone-500">
+		if query == "" {
+			Nothing written yet.
+		} else {
+			Nothing matches { query }.
+		}
+	</p>
+}
+
+// stateBadge names what the Publication Date says. There is no status column;
+// this word is derived from the date every time it is shown (ADR-0008).
+templ stateBadge(s string) {
+	switch s {
+		case "draft":
+			<span class="shrink-0 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">draft</span>
+		case "scheduled":
+			<span class="shrink-0 rounded bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">scheduled</span>
+		default:
+			<span class="shrink-0 rounded bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-600">published</span>
+	}
+}

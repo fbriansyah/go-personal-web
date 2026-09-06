@@ -1,0 +1,51 @@
+package view
+
+// Layout is the shell every full page arrives in.
+//
+// It is applied by one render function in internal/admin, which checks the
+// HX-Request header once and either wraps a component in this or writes it
+// bare (ADR-0011). No handler makes that decision for itself.
+templ Layout(title string, nav Nav, body templ.Component) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="htmx-config" content={ htmxConfig }/>
+			<meta name="robots" content="noindex, nofollow"/>
+			<title>{ title }</title>
+			<link rel="stylesheet" href="/admin/static/app.css"/>
+			<script src="/admin/static/htmx.min.js" defer></script>
+		</head>
+		<body class="min-h-full bg-stone-50 text-stone-900 antialiased">
+			<header class="border-b border-stone-200 bg-white">
+				<div class="mx-auto flex max-w-4xl items-center gap-6 px-4 py-3">
+					<span class="font-semibold tracking-tight">Admin</span>
+					if nav != NavNone {
+						<nav class="flex gap-4 text-sm">
+							@navLink("/admin/posts", "Posts", nav == NavPosts)
+							@navLink("/admin/pages", "Pages", nav == NavPages)
+						</nav>
+						<form method="post" action="/admin/logout" class="ml-auto">
+							<button type="submit" class="text-sm text-stone-500 hover:text-stone-900">Log out</button>
+						</form>
+					}
+				</div>
+			</header>
+			<main class="mx-auto max-w-4xl px-4 py-8">
+				@body
+			</main>
+		</body>
+	</html>
+}
+
+// navLink marks the section a screen belongs to. Every class name is written
+// out in full: Tailwind reads these files as plain text, so a class assembled
+// from pieces is never generated (ADR-0013).
+templ navLink(href, label string, current bool) {
+	if current {
+		<a href={ templ.SafeURL(href) } class="font-medium text-stone-900 underline underline-offset-4">{ label }</a>
+	} else {
+		<a href={ templ.SafeURL(href) } class="text-stone-500 hover:text-stone-900">{ label }</a>
+	}
+}

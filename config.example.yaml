@@ -22,4 +22,41 @@ database:
   idle_pool: 2
   conn_max_lifetime: 30m
 
+admin:
+  # The Author is a config value, not a database row (ADR-0009). Admin is
+  # mounted only when both secrets below are set; without them the binary
+  # serves the public site and says so at startup.
+  #
+  # Neither belongs in a file you commit. Both are here to be named, not to be
+  # filled in — set them in the environment:
+  #
+  #   PW_ADMIN_PASSWORD_HASH="$(personal-web admin hash-password)"
+  #   PW_ADMIN_SESSION_SECRET="$(head -c 32 /dev/urandom | base64)"
+  #
+  # `config show` prints both redacted, whatever they hold.
+  password_hash: ""
+  session_secret: ""
+
+  # How long a session lasts from the moment it is issued. There is no renewal:
+  # with no session storage there is nothing to revoke against, so a sliding
+  # window would be extended by a stolen cookie's own use and never close.
+  # Rotating session_secret logs every device out immediately.
+  session_ttl: 168h
+
+  # Drops the Secure attribute from the session cookie so Admin works over
+  # plain HTTP. It is a key you set rather than a guess about localhost,
+  # because that guess is how a deployment quietly stops setting Secure.
+  insecure_cookie: false
+
+  # The zone a Publication Date typed into the editor is understood in, and the
+  # zone every date is shown in. Stated here rather than taken from the server,
+  # so moving a deployment cannot shift what a schedule means.
+  timezone: UTC
+
+  # Login attempts one address may make per window. The limit stands in front
+  # of argon2id, which is expensive by design and therefore something an
+  # unauthenticated caller must not be able to spend freely.
+  login_attempts: 10
+  login_window: 15m
+
 log_level: info # debug | info | warn | error

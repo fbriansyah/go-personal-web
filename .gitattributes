@@ -1,0 +1,6 @@
+# Generated, and committed on purpose (ADR-0013). Marking them collapses the
+# noise in review and keeps them out of language statistics; they are still
+# ordinary tracked files, and `make generated` fails if they go stale.
+*_templ.go linguist-generated=true
+internal/admin/static/app.css linguist-generated=true
+internal/admin/static/htmx-*.min.js linguist-vendored=true

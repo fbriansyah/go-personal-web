@@ -36,3 +36,9 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# templ's watch-mode scratch files. The generated *_templ.go and the generated
+# stylesheet are committed on purpose: go:embed is a compile error when its file
+# is missing, so ignoring them would mean the repository does not build from a
+# clean clone without two extra tools (ADR-0013).
+*_templ.txt

@@ -1,0 +1,188 @@
+package view
+
+// Editor is the write and edit screen for a Post or a Page.
+//
+// The Publication Date is a text input, always visible, because the model has
+// no status: empty is a Draft, a past date is published, a future one is
+// scheduled, and one field carries all three (ADR-0008). A publish/unpublish
+// toggle would teach the wrong vocabulary and put scheduling out of reach.
+templ Editor(f Form) {
+	<div class="mb-6 flex items-baseline justify-between gap-4">
+		<h1 class="text-xl font-semibold tracking-tight">
+			if f.IsNew() {
+				New { f.Kind }
+			} else {
+				Edit { f.Kind }
+			}
+		</h1>
+		<a href={ templ.SafeURL(indexPath(f.Kind)) } class="text-sm text-stone-500 hover:text-stone-900">Back</a>
+	</div>
+	@EditorForm(f)
+}
+
+// EditorForm is the fragment a rejected save comes back as, carrying the values
+// the Author typed rather than the ones the database holds. It is answered with
+// 422, which htmx swaps because of the responseHandling in the layout's config.
+templ EditorForm(f Form) {
+	<form
+		id="editor"
+		method="post"
+		action={ templ.SafeURL(savePath(f)) }
+		hx-post={ savePath(f) }
+		hx-target="this"
+		hx-swap="outerHTML"
+		class="space-y-5"
+	>
+		if f.Err("") != "" {
+			<p class="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{ f.Err("") }</p>
+		}
+		<div>
+			<label for="title" class="mb-1 block text-sm font-medium">Title</label>
+			<input
+				type="text"
+				id="title"
+				name="title"
+				value={ f.Title }
+				required
+				autocomplete="off"
+				class="w-full rounded border border-stone-300 px-3 py-2 text-lg focus:border-stone-900 focus:outline-none"
+			/>
+			@fieldError(f.Err("title"))
+		</div>
+		<div>
+			<label for="slug" class="mb-1 block text-sm font-medium">Slug</label>
+			<input
+				type="text"
+				id="slug"
+				name="slug"
+				value={ f.Slug }
+				required
+				autocomplete="off"
+				pattern="[a-z0-9]+(-[a-z0-9]+)*"
+				class="w-full rounded border border-stone-300 px-3 py-2 font-mono text-sm focus:border-stone-900 focus:outline-none"
+			/>
+			<p class="mt-1 text-xs text-stone-500">The only identifier a visitor sees. It may be rewritten at any time.</p>
+			@fieldError(f.Err("slug"))
+		</div>
+		<div>
+			<label for="body" class="mb-1 block text-sm font-medium">Body</label>
+			<textarea
+				id="body"
+				name="body"
+				rows="20"
+				class="w-full rounded border border-stone-300 px-3 py-2 font-mono text-sm focus:border-stone-900 focus:outline-none"
+			>{ f.Body }</textarea>
+			<p class="mt-1 text-xs text-stone-500">Markdown. It is stored as written and rendered on read.</p>
+		</div>
+		<div class="flex flex-wrap items-end gap-3 border-t border-stone-200 pt-5">
+			<div>
+				<label for="published_at" class="mb-1 block text-sm font-medium">Publication date</label>
+				<input
+					type="datetime-local"
+					id="published_at"
+					name="published_at"
+					value={ f.PublishedAt }
+					class="rounded border border-stone-300 px-3 py-2 text-sm focus:border-stone-900 focus:outline-none"
+				/>
+				<p class="mt-1 text-xs text-stone-500">
+					Empty is a draft; a future time schedules it. Times are { f.Zone }.
+				</p>
+				@fieldError(f.Err("published_at"))
+			</div>
+			<button
+				type="submit"
+				name="action"
+				value="save"
+				class="rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
+			>
+				Save
+			</button>
+			<button
+				type="submit"
+				name="action"
+				value="publish_now"
+				class="rounded border border-stone-300 px-4 py-2 text-sm font-medium hover:bg-stone-100"
+			>
+				Publish now
+			</button>
+			@autosaveStatus(f)
+		</div>
+	</form>
+}
+
+// autosaveStatus both reports and drives the autosave.
+//
+// It is on only for Drafts: autosaving published writing would put every
+// half-finished edit in front of whoever is reading it (ADR-0014). The trigger
+// lives on this element rather than on the form so that the form's own submit
+// handling is untouched.
+//
+// hx-target is stated even though it looks like the default. htmx attributes
+// are inherited, so without it this element would pick up the form's
+// hx-target="this" — and "this" names the element the attribute is written on,
+// the form. Every autosave would then swap the whole editor away and replace it
+// with the little span below.
+templ autosaveStatus(f Form) {
+	if f.Autosave && !f.IsNew() {
+		<span
+			id="autosave"
+			class="ml-auto text-xs text-stone-400"
+			hx-post={ autosavePath(f) }
+			hx-target="this"
+			hx-include="#editor"
+			hx-trigger="every 15s"
+			hx-swap="outerHTML"
+		>
+			Draft saves itself
+		</span>
+	} else if f.IsNew() {
+		<span class="ml-auto text-xs text-stone-400">Saves itself once it exists</span>
+	} else {
+		<span class="ml-auto text-xs text-stone-400">Published — saved only when you ask</span>
+	}
+}
+
+// Saved replaces the autosave marker after a successful autosave, and carries
+// the same trigger so the next one still fires.
+templ Saved(f Form, at string) {
+	<span
+		id="autosave"
+		class="ml-auto text-xs text-stone-400"
+		hx-post={ autosavePath(f) }
+		hx-target="this"
+		hx-include="#editor"
+		hx-trigger="every 15s"
+		hx-swap="outerHTML"
+	>
+		Saved { at }
+	</span>
+}
+
+templ fieldError(msg string) {
+	if msg != "" {
+		<p class="mt-1 text-sm text-red-700">{ msg }</p>
+	}
+}
+
+// PublishedMarker replaces the autosave marker when autosave is refused because
+// the writing is published. It carries no trigger, so the browser stops asking
+// rather than looping against a refusal (ADR-0014).
+templ PublishedMarker() {
+	<span id="autosave" class="ml-auto text-xs text-stone-400">Published — saved only when you ask</span>
+}
+
+// NotSavedMarker says why an autosave did not store anything, and keeps asking:
+// the Author is mid-edit and the next attempt may well succeed.
+templ NotSavedMarker(f Form, reason string) {
+	<span
+		id="autosave"
+		class="ml-auto text-xs text-red-700"
+		hx-post={ autosavePath(f) }
+		hx-target="this"
+		hx-include="#editor"
+		hx-trigger="every 15s"
+		hx-swap="outerHTML"
+	>
+		Not saved: { reason }
+	</span>
+}

@@ -1,0 +1,29 @@
+package view
+
+// Login is the only screen served without a session.
+templ Login(f LoginForm) {
+	<div class="mx-auto max-w-sm">
+		<h1 class="mb-6 text-xl font-semibold tracking-tight">Log in</h1>
+		if f.Error != "" {
+			<p class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{ f.Error }</p>
+		}
+		<form method="post" action="/admin/login" class="space-y-4">
+			if f.Next != "" {
+				<input type="hidden" name="next" value={ f.Next }/>
+			}
+			<div>
+				<label for="password" class="mb-1 block text-sm font-medium">Password</label>
+				<input
+					type="password"
+					id="password"
+					name="password"
+					required
+					autofocus
+					autocomplete="current-password"
+					class="w-full rounded border border-stone-300 px-3 py-2 focus:border-stone-900 focus:outline-none"
+				/>
+			</div>
+			<button type="submit" class="rounded bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700">Log in</button>
+		</form>
+	</div>
+}

@@ -6,6 +6,27 @@ BINARY      := personal-web
 BUILD_DIR   := bin
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
+# The front-end toolchain. Both are pinned: templ generates Go that is
+# committed, and tailwind generates CSS that is embedded, so the version that
+# produced them is part of what the build means (ADR-0013). Neither is needed
+# to build, only to change what they generate.
+TEMPL_VERSION    := v0.3.1020
+TAILWIND_VERSION := v4.3.3
+TEMPL            := $(BUILD_DIR)/templ
+TAILWIND         := $(BUILD_DIR)/tailwindcss
+
+# The asset name of the standalone tailwind binary for this machine. Written
+# with make's own functions rather than a shell case: a `)` inside $(shell ...)
+# closes the expression early, and the error it produces names nothing useful.
+UNAME_S           := $(shell uname -s)
+UNAME_M           := $(shell uname -m)
+TAILWIND_OS       := $(if $(filter Darwin,$(UNAME_S)),macos,linux)
+TAILWIND_ARCH     := $(if $(filter arm64 aarch64,$(UNAME_M)),arm64,x64)
+TAILWIND_PLATFORM := $(TAILWIND_OS)-$(TAILWIND_ARCH)
+
+# The port `make watch` proxies the reloading browser to.
+PORT ?= 8080
+
 # The local development database. Both values match the defaults compiled into
 # the binary (config.DevDatabaseURL) and the fallbacks in database.yml, so a
 # fresh clone needs no environment at all.
@@ -24,6 +45,10 @@ help:
 # --- building and running ---------------------------------------------------
 
 ## build: compile the binary into bin/, stamping the version
+#
+# This needs no tools: the generated Go and the generated CSS are committed, so
+# a fresh clone builds with `go build` alone (ADR-0013). Run `make generate`
+# after changing a .templ file or a class name.
 build:
 	@mkdir -p $(BUILD_DIR)
 	go build -ldflags "-X main.version=$(VERSION)" -o $(BUILD_DIR)/$(BINARY) .
@@ -35,6 +60,52 @@ run:
 ## config: print the effective configuration, passwords redacted
 config:
 	go run . config show
+
+# --- front end --------------------------------------------------------------
+
+## generate: rebuild the templ components and the stylesheet
+generate: templ css
+
+## templ: compile internal/view/*.templ into Go
+templ: $(TEMPL)
+	@$(TEMPL) generate --log-level error
+
+## css: rebuild the embedded stylesheet from the templ sources
+#
+# Tailwind reads those files as plain text, so only class names written out in
+# full are found. A class assembled in Go is never generated.
+css: $(TAILWIND)
+	@$(TAILWIND) --input internal/view/app.src.css \
+		--output internal/admin/static/app.css --minify
+
+## watch: regenerate components and CSS as they are edited
+watch: $(TEMPL) $(TAILWIND)
+	@$(TAILWIND) --input internal/view/app.src.css \
+		--output internal/admin/static/app.css --watch & \
+	$(TEMPL) generate --watch --proxy=http://localhost:$(PORT) --cmd="go run . serve"
+
+# Both tools provide themselves, the way db-up provides its own postgres. They
+# land in bin/, which is already ignored.
+$(TEMPL):
+	@mkdir -p $(BUILD_DIR)
+	GOBIN=$(CURDIR)/$(BUILD_DIR) go install github.com/a-h/templ/cmd/templ@$(TEMPL_VERSION)
+
+$(TAILWIND):
+	@mkdir -p $(BUILD_DIR)
+	@echo "fetching tailwindcss $(TAILWIND_VERSION)"
+	@curl -sfL -o $(TAILWIND) \
+		https://github.com/tailwindlabs/tailwindcss/releases/download/$(TAILWIND_VERSION)/tailwindcss-$(TAILWIND_PLATFORM)
+	@chmod +x $(TAILWIND)
+
+# --- admin ------------------------------------------------------------------
+
+## hash-password: print an argon2id hash for PW_ADMIN_PASSWORD_HASH
+hash-password:
+	@go run . admin hash-password
+
+## session-secret: print a random value for PW_SESSION_SECRET
+session-secret:
+	@head -c 32 /dev/urandom | base64
 
 # --- database ---------------------------------------------------------------
 
@@ -111,10 +182,21 @@ test:
 
 ## test-unit: run only the tests that need neither docker nor a database
 test-unit:
-	go test ./internal/cli/ ./internal/config/
+	go test ./internal/cli/ ./internal/config/ ./internal/admin/
 
-## check: format, vet and test — what CI should run
-check: fmt vet test
+## check: format, vet, generated files and test — what CI should run
+check: fmt vet generated test
+
+## generated: fail if the committed generated files are stale
+#
+# This exists because stale generated files fail silently and misleadingly. A
+# stale template renders old markup with no error; a stale stylesheet drops
+# styles for classes plainly written in the template. You would suspect htmx,
+# or Tailwind, or the browser. This turns the whole class into a failure that
+# names itself (ADR-0013).
+generated: generate
+	@git diff --exit-code --stat -- '*_templ.go' internal/admin/static/app.css \
+		|| { echo; echo "generated files are stale: run 'make generate' and commit the result"; exit 1; }
 
 ## fmt: rewrite sources with gofmt
 fmt:
@@ -132,6 +214,8 @@ tidy:
 clean:
 	rm -rf $(BUILD_DIR)
 
-.PHONY: help build run config db-up db-down db-reset psql \
+.PHONY: help build run config generate templ css watch \
+        hash-password session-secret \
+        db-up db-down db-reset psql \
         migrate migrate-down migrate-status migration \
-        test test-unit check fmt vet tidy clean
+        test test-unit check generated fmt vet tidy clean
