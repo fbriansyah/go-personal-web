@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -448,5 +449,31 @@ func TestExpiryIsEnforcedByTheServer(t *testing.T) {
 	// refuses it.
 	if got := do(h, http.MethodGet, "/admin/posts", withSession(session)); got.Code != http.StatusSeeOther {
 		t.Errorf("status = %d, want 303: an expired session must not be honoured", got.Code)
+	}
+}
+
+// The autosave marker lives inside the editor form, and htmx attributes are
+// inherited: without a target of its own it picks up the form's
+// hx-target="this", where "this" names the form. Every autosave would then swap
+// the whole editor away and leave the Author with nothing to type into.
+func TestAutosaveTargetsItselfAndNotTheEditor(t *testing.T) {
+	d := draft("in-progress")
+	store := &stub{posts: []content.Post{d}}
+	h := newAdmin(t, store)
+	session := logIn(t, h)
+
+	edit := do(h, http.MethodGet, "/admin/posts/"+d.ID.String()+"/edit", withSession(session))
+	saved := do(h, http.MethodPost, "/admin/posts/"+d.ID.String()+"/autosave",
+		withSession(session), asHTMX,
+		form("title=Still+writing&slug=in-progress&body=More+words"))
+
+	for name, w := range map[string]*httptest.ResponseRecorder{"edit": edit, "autosave": saved} {
+		marker := body(w)[strings.Index(body(w), `id="autosave"`):]
+		if i := strings.Index(marker, "hx-trigger"); i > 0 {
+			marker = marker[:i]
+		}
+		if !strings.Contains(marker, `hx-target="this"`) {
+			t.Errorf("%s: autosave marker inherits the form's target:\n%s", name, marker)
+		}
 	}
 }

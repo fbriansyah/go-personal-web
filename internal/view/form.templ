@@ -116,12 +116,19 @@ templ EditorForm(f Form) {
 // half-finished edit in front of whoever is reading it (ADR-0014). The trigger
 // lives on this element rather than on the form so that the form's own submit
 // handling is untouched.
+//
+// hx-target is stated even though it looks like the default. htmx attributes
+// are inherited, so without it this element would pick up the form's
+// hx-target="this" — and "this" names the element the attribute is written on,
+// the form. Every autosave would then swap the whole editor away and replace it
+// with the little span below.
 templ autosaveStatus(f Form) {
 	if f.Autosave && !f.IsNew() {
 		<span
 			id="autosave"
 			class="ml-auto text-xs text-stone-400"
 			hx-post={ autosavePath(f) }
+			hx-target="this"
 			hx-include="#editor"
 			hx-trigger="every 15s"
 			hx-swap="outerHTML"
@@ -142,6 +149,7 @@ templ Saved(f Form, at string) {
 		id="autosave"
 		class="ml-auto text-xs text-stone-400"
 		hx-post={ autosavePath(f) }
+		hx-target="this"
 		hx-include="#editor"
 		hx-trigger="every 15s"
 		hx-swap="outerHTML"
@@ -170,6 +178,7 @@ templ NotSavedMarker(f Form, reason string) {
 		id="autosave"
 		class="ml-auto text-xs text-red-700"
 		hx-post={ autosavePath(f) }
+		hx-target="this"
 		hx-include="#editor"
 		hx-trigger="every 15s"
 		hx-swap="outerHTML"
