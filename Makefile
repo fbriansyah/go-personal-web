@@ -24,8 +24,10 @@ TAILWIND_OS       := $(if $(filter Darwin,$(UNAME_S)),macos,linux)
 TAILWIND_ARCH     := $(if $(filter arm64 aarch64,$(UNAME_M)),arm64,x64)
 TAILWIND_PLATFORM := $(TAILWIND_OS)-$(TAILWIND_ARCH)
 
-# The port `make watch` proxies the reloading browser to.
-PORT ?= 8080
+# The port the server listens on, and the port `make watch` puts the reloading
+# browser proxy in front of it on.
+PORT       ?= 8080
+PROXY_PORT ?= 7331
 
 # The local development database. Both values match the defaults compiled into
 # the binary (config.DevDatabaseURL) and the fallbacks in database.yml, so a
@@ -78,11 +80,22 @@ css: $(TAILWIND)
 	@$(TAILWIND) --input internal/view/app.src.css \
 		--output internal/admin/static/app.css --minify
 
-## watch: regenerate components and CSS as they are edited
+## watch: rebuild and reload the browser as you edit
+#
+# Three watchers, each owning one leg of the loop: tailwind regenerates the
+# stylesheet, templ regenerates the components and proxies the browser on
+# PROXY_PORT, and air (.air.toml) rebuilds and restarts the server whenever the
+# generated Go or the generated CSS changes.
+#
+# Open http://localhost:$(PROXY_PORT), not $(PORT): only the proxy injects the
+# reload script.
 watch: $(TEMPL) $(TAILWIND)
-	@$(TAILWIND) --input internal/view/app.src.css \
+	@trap 'kill 0' EXIT INT TERM; \
+	$(TAILWIND) --input internal/view/app.src.css \
 		--output internal/admin/static/app.css --watch & \
-	$(TEMPL) generate --watch --proxy=http://localhost:$(PORT) --cmd="go run . serve"
+	$(TEMPL) generate --watch \
+		--proxy=http://localhost:$(PORT) --proxyport=$(PROXY_PORT) & \
+	go tool air
 
 # Both tools provide themselves, the way db-up provides its own postgres. They
 # land in bin/, which is already ignored.

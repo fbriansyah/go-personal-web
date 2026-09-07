@@ -114,8 +114,15 @@ them, and the Makefile fetches both, pinned, into `bin/`:
 
 ```sh
 make generate   # after editing a .templ file or a class name
-make watch      # regenerate and reload while editing
+make watch      # regenerate, rebuild and reload while editing
 ```
+
+`make watch` runs three watchers together: Tailwind for the stylesheet, `templ`
+for the components, and [air](https://github.com/air-verse/air) (configured in
+`.air.toml`, run through `go tool air` so it needs no install) to rebuild and
+restart the server whenever the generated Go or CSS changes. Browse
+<http://localhost:7331> — the `templ` proxy, which injects the reload script —
+rather than the server's own `:8080`.
 
 `make check` fails if the committed generated files are stale. They fail
 silently otherwise: a stale template renders old markup with no error, and a

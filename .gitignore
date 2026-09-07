@@ -42,3 +42,6 @@ go.work.sum
 # is missing, so ignoring them would mean the repository does not build from a
 # clean clone without two extra tools (ADR-0013).
 *_templ.txt
+
+# air's build output (see .air.toml)
+/tmp/
